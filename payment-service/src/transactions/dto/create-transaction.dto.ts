@@ -9,7 +9,9 @@ import {
 import { Currency, TransactionType } from '../../generated/prisma/enums';
 
 export class CreateTransactionDto {
-  @IsUUID()
+  @IsUUID('4', {
+    message: 'ID del comerciante debe ser un UUID valido',
+  })
   merchant_id!: string;
 
   @IsString()
@@ -18,13 +20,19 @@ export class CreateTransactionDto {
   })
   amount!: string;
 
-  @IsEnum(Currency)
+  @IsEnum(Currency, {
+    message: 'Tipo de moneda debe ser uno de estos valores: GTQ, COP, USD',
+  })
   currency!: Currency;
 
-  @IsEnum(TransactionType)
+  @IsEnum(TransactionType, {
+    message: 'Tipo de transacción debe ser uno de estos valores: payin, payout',
+  })
   type!: TransactionType;
 
   @IsOptional()
-  @IsObject()
+  @IsObject({
+    message: 'metadata debe ser un objeto valido',
+  })
   metadata?: Record<string, unknown>;
 }

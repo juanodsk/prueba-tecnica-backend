@@ -14,29 +14,54 @@ import {
 
 export class ListTransactionsQueryDto {
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsInt({
+    message: 'page debe ser un numero entero',
+  })
+  @Min(1, {
+    message: 'page debe ser mayor o igual a 1',
+  })
   page = 1;
 
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
+  @IsInt({
+    message: 'limit debe ser un numero entero',
+  })
+  @Min(1, {
+    message: 'limit debe ser mayor o igual a 1',
+  })
+  @Max(100, {
+    message: 'limit no puede ser mayor a 100',
+  })
   limit = 20;
 
   @IsOptional()
-  @IsEnum(TransactionStatus)
+  @IsEnum(TransactionStatus, {
+    message:
+      'Estado de la transacción debe ser uno de estos valores: pending, approved, rejected, failed, completed',
+  })
   status?: TransactionStatus;
 
   @IsOptional()
-  @IsEnum(TransactionType)
+  @IsEnum(TransactionType, {
+    message: 'Tipo de transacción debe ser uno de estos valores: payin, payout',
+  })
   type?: TransactionType;
 
   @IsOptional()
-  @IsISO8601({ strict: true })
+  @IsISO8601(
+    { strict: true },
+    {
+      message: 'Fecha inicio debe ser una fecha valida en formato ISO 8601',
+    },
+  )
   date_from?: string;
 
   @IsOptional()
-  @IsISO8601({ strict: true })
+  @IsISO8601(
+    { strict: true },
+    {
+      message: 'Fecha final debe ser una fecha valida en formato ISO 8601',
+    },
+  )
   date_to?: string;
 }

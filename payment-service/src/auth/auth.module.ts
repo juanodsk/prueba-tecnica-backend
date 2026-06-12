@@ -5,6 +5,6 @@ import { ApiKeyGuard } from './api-key/api-key.guard';
 @Module({
   imports: [PrismaModule],
   providers: [AuthService, ApiKeyGuard],
-  exports: [ApiKeyGuard],
+  exports: [AuthService, ApiKeyGuard],
 })
 export class AuthModule {}

@@ -2,18 +2,64 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: payments
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-payments}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d payments"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-payments}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - payments-network
+
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 3001
+      DATABASE_URL: ${PAYMENT_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/payments?schema=public}
+    ports:
+      - "${PAYMENT_SERVICE_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && node dist/src/main.js"
+    networks:
+      - payments-network
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    environment:
+      PORT: 3000
+      DATABASE_URL: ${GATEWAY_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/payments}
+      PAYMENT_SERVICE_URL: http://payment-service:3001
+      JWT_SECRET: ${JWT_SECRET:-PRUEBA_TECNICA_SECRET_KEY}
+      PROXY_TIMEOUT_MS: ${PROXY_TIMEOUT_MS:-5000}
+    ports:
+      - "${API_GATEWAY_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      payment-service:
+        condition: service_started
+    networks:
+      - payments-network
 
 volumes:
   postgres_data:
+
+networks:
+  payments-network:
+    driver: bridge

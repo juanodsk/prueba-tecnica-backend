@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { CircuitOpenError } from "../circuit-breaker/circuit-breaker";
 
 export function errorMiddleware(
   error: unknown,
@@ -7,6 +8,18 @@ export function errorMiddleware(
   _next: NextFunction,
 ): void {
   console.error("Error del API Gateway:", error);
+  if (error instanceof CircuitOpenError) {
+    const retryAfterSeconds = Math.ceil(error.retryAfterMs / 1000);
+
+    response.setHeader("Retry-After", retryAfterSeconds.toString());
+    response.status(503).json({
+      statusCode: 503,
+      message:
+        "Circuit breaker abierto: servicio de pagos temporalmente bloqueado",
+      error: "Service Unavailable",
+    });
+    return;
+  }
 
   if (error instanceof DOMException && error.name === "TimeoutError") {
     response.status(504).json({

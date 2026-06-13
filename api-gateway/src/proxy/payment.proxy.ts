@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { CircuitBreaker } from "../circuit-breaker/circuit-breaker";
 import { env } from "../config/env";
 
 const FORWARDED_REQUEST_HEADERS = [
@@ -9,6 +10,14 @@ const FORWARDED_REQUEST_HEADERS = [
 
 const FORWARDED_RESPONSE_HEADERS = ["content-type"] as const;
 
+const PAYMENT_FAILURE_THRESHOLD = 5;
+const PAYMENT_RESET_TIMEOUT_MS = 30_000;
+
+const paymentCircuitBreaker = new CircuitBreaker(
+  PAYMENT_FAILURE_THRESHOLD,
+  PAYMENT_RESET_TIMEOUT_MS,
+);
+
 export async function paymentProxy(
   request: Request,
   response: Response,
@@ -18,12 +27,16 @@ export async function paymentProxy(
     const downstreamPath = request.originalUrl.replace(/^\/api\/v1/, "");
     const downstreamUrl = new URL(downstreamPath, env.paymentServiceUrl);
 
-    const downstreamResponse = await fetch(downstreamUrl, {
-      method: request.method,
-      headers: buildHeaders(request),
-      body: buildBody(request),
-      signal: AbortSignal.timeout(env.proxyTimeoutMs),
-    });
+    const downstreamResponse = await paymentCircuitBreaker.execute(
+      () =>
+        fetch(downstreamUrl, {
+          method: request.method,
+          headers: buildHeaders(request),
+          body: buildBody(request),
+          signal: AbortSignal.timeout(env.proxyTimeoutMs),
+        }),
+      (result) => result.status >= 500,
+    );
 
     for (const headerName of FORWARDED_RESPONSE_HEADERS) {
       const headerValue = downstreamResponse.headers.get(headerName);

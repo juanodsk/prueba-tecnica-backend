@@ -6,6 +6,7 @@ generator client {
   output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
+
 datasource db {
   provider = "postgresql"
 }
@@ -49,8 +50,9 @@ model Merchant {
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
 
-  transactions Transaction[]
-  settlements  Settlement[]
+  transactions      Transaction[]
+  settlementBatches SettlementBatch[]
+  settlements       Settlement[]
 
   @@map("merchants")
 }
@@ -75,9 +77,28 @@ model Transaction {
   @@map("transactions")
 }
 
-model Settlement {
+model SettlementBatch {
   id               String           @id @default(uuid()) @db.Uuid
   merchantId       String           @map("merchant_id") @db.Uuid
+  transactionCount Int              @map("transaction_count")
+  status           SettlementStatus
+  periodStart      DateTime         @map("period_start")
+  periodEnd        DateTime         @map("period_end")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  merchant    Merchant     @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  settlements Settlement[]
+
+  @@index([merchantId, status, createdAt])
+  @@index([merchantId, periodStart, periodEnd])
+  @@map("settlement_batches")
+}
+
+model Settlement {
+  id               String           @id @default(uuid()) @db.Uuid
+  batchId          String           @map("batch_id") @db.Uuid
+  merchantId       String           @map("merchant_id") @db.Uuid
+  currency         Currency
   totalAmount      Decimal          @map("total_amount") @db.Decimal(14, 2)
   transactionCount Int              @map("transaction_count")
   status           SettlementStatus
@@ -85,9 +106,11 @@ model Settlement {
   periodEnd        DateTime         @map("period_end")
   createdAt        DateTime         @default(now()) @map("created_at")
 
+  batch                  SettlementBatch         @relation(fields: [batchId], references: [id], onDelete: Restrict)
   merchant               Merchant                @relation(fields: [merchantId], references: [id], onDelete: Restrict)
   settlementTransactions SettlementTransaction[]
 
+  @@unique([batchId, currency])
   @@index([merchantId, status, createdAt])
   @@index([merchantId, periodStart, periodEnd])
   @@map("settlements")

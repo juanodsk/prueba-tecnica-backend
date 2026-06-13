@@ -5,22 +5,35 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { type Merchant, Prisma } from '../generated/prisma/client';
+import {
+  type Merchant,
+  Prisma,
+  type Transaction,
+} from '../generated/prisma/client';
 import { SettlementStatus, TransactionStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { GenerateSettlementDto } from './dto/generate-settlement.dto';
 
-const settlementDetails = {
+const settlementBatchDetails = {
   include: {
-    settlementTransactions: {
+    settlements: {
+      orderBy: {
+        currency: 'asc',
+      },
       include: {
-        transaction: true,
+        settlementTransactions: {
+          include: {
+            transaction: true,
+          },
+        },
       },
     },
   },
-} satisfies Prisma.SettlementDefaultArgs;
+} satisfies Prisma.SettlementBatchDefaultArgs;
 
-type SettlementDetails = Prisma.SettlementGetPayload<typeof settlementDetails>;
+type SettlementBatchDetails = Prisma.SettlementBatchGetPayload<
+  typeof settlementBatchDetails
+>;
 
 @Injectable()
 export class SettlementsService {
@@ -29,7 +42,7 @@ export class SettlementsService {
   async generate(
     merchant: Merchant,
     dto: GenerateSettlementDto,
-  ): Promise<SettlementDetails> {
+  ): Promise<SettlementBatchDetails> {
     this.validateMerchantOwnership(merchant, dto.merchant_id);
 
     const periodStart = new Date(dto.period_start);
@@ -59,15 +72,9 @@ export class SettlementsService {
             );
           }
 
-          const totalAmount = transactions.reduce(
-            (total, transaction) => total.plus(transaction.amount),
-            new Prisma.Decimal(0),
-          );
-
-          const settlement = await tx.settlement.create({
+          const batch = await tx.settlementBatch.create({
             data: {
               merchantId: merchant.id,
-              totalAmount,
               transactionCount: transactions.length,
               status: SettlementStatus.pending,
               periodStart,
@@ -75,18 +82,43 @@ export class SettlementsService {
             },
           });
 
-          await tx.settlementTransaction.createMany({
-            data: transactions.map((transaction) => ({
-              settlementId: settlement.id,
-              transactionId: transaction.id,
-            })),
-          });
+          const transactionsByCurrency = this.groupByCurrency(transactions);
 
-          return tx.settlement.findUniqueOrThrow({
+          for (const [
+            currency,
+            currencyTransactions,
+          ] of transactionsByCurrency) {
+            const totalAmount = currencyTransactions.reduce(
+              (total, transaction) => total.plus(transaction.amount),
+              new Prisma.Decimal(0),
+            );
+
+            const settlement = await tx.settlement.create({
+              data: {
+                batchId: batch.id,
+                merchantId: merchant.id,
+                currency,
+                totalAmount,
+                transactionCount: currencyTransactions.length,
+                status: SettlementStatus.pending,
+                periodStart,
+                periodEnd,
+              },
+            });
+
+            await tx.settlementTransaction.createMany({
+              data: currencyTransactions.map((transaction) => ({
+                settlementId: settlement.id,
+                transactionId: transaction.id,
+              })),
+            });
+          }
+
+          return tx.settlementBatch.findUniqueOrThrow({
             where: {
-              id: settlement.id,
+              id: batch.id,
             },
-            ...settlementDetails,
+            ...settlementBatchDetails,
           });
         },
         {
@@ -107,20 +139,23 @@ export class SettlementsService {
     }
   }
 
-  async findOne(merchant: Merchant, id: string): Promise<SettlementDetails> {
-    const settlement = await this.prisma.settlement.findFirst({
+  async findOne(
+    merchant: Merchant,
+    id: string,
+  ): Promise<SettlementBatchDetails> {
+    const settlementBatch = await this.prisma.settlementBatch.findFirst({
       where: {
         id,
         merchantId: merchant.id,
       },
-      ...settlementDetails,
+      ...settlementBatchDetails,
     });
 
-    if (!settlement) {
+    if (!settlementBatch) {
       throw new NotFoundException('Liquidacion no encontrada');
     }
 
-    return settlement;
+    return settlementBatch;
   }
 
   private validateMerchantOwnership(
@@ -140,5 +175,24 @@ export class SettlementsService {
         'period_start no puede ser posterior a period_end',
       );
     }
+  }
+
+  private groupByCurrency(
+    transactions: Transaction[],
+  ): Map<Transaction['currency'], Transaction[]> {
+    const transactionsByCurrency = new Map<
+      Transaction['currency'],
+      Transaction[]
+    >();
+
+    for (const transaction of transactions) {
+      const currencyTransactions =
+        transactionsByCurrency.get(transaction.currency) ?? [];
+
+      currencyTransactions.push(transaction);
+      transactionsByCurrency.set(transaction.currency, currencyTransactions);
+    }
+
+    return transactionsByCurrency;
   }
 }

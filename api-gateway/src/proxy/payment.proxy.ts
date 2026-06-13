@@ -4,6 +4,7 @@ import { env } from "../config/env";
 
 const FORWARDED_REQUEST_HEADERS = [
   "x-api-key",
+  "x-admin-key",
   "content-type",
   "authorization",
 ] as const;

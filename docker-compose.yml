@@ -28,6 +28,7 @@ services:
     environment:
       PORT: 3001
       DATABASE_URL: ${PAYMENT_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/payments?schema=public}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-PRUEBA_TECNICA_ADMIN_KEY}
     ports:
       - "${PAYMENT_SERVICE_PORT:-3001}:3001"
     depends_on:

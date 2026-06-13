@@ -17,6 +17,7 @@ app.get("/health", (_request: Request, response: Response) => {
     timestamp: new Date().toISOString(),
   });
 });
+app.use("/api/v1/merchants", paymentProxy);
 app.use("/api/v1", authMiddleware);
 app.use("/api/v1", rateLimitMiddleware);
 app.use("/api/v1/transactions", paymentProxy);
